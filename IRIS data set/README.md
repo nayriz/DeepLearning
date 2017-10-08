@@ -5,7 +5,7 @@ The svm_loss and softmax_loss function were already provided, however those who 
 
 The code is best run using Python 3, however should also work with Python 2.
 
-FILES DESCRIPTION:
+<b>FILES DESCRIPTION</b>:
 
 1) driver.py r: the file to be run to obtain results for the Ascent assignment with the IRIS data set
 2) fc_net.py : the file that contains the Neural Network architecture. For this project only one class is used, namely VNN which sets a Neural Network with the following architecture
@@ -38,5 +38,5 @@ This architecture was arbitrarily chosen and along with other hyperparameters sh
 
 The hyperparameters trained are the learning rate, the regularization and the dropout probability.
 
-The model would be expected to perform better if the data set were larger, because the results on the TEST set are typically between 93.3333% and 100%, but sometimes fall to 86.6667% depending on the seed. The model scales arguably well with larger, more complex data sets since it can achieve above 55% accuracy on the CIFAR-10 data set, however at this level a CNN would probably be required.
+The model would be expected to perform better if the data set were larger, because the results on the TEST set are typically between 93.3333% and 100%, but sometimes fall to 86.6667% depending on the seed. The model scales arguably well with larger, more complex data sets since it can achieve above 55% accuracy on the CIFAR-10 data set, however at that level convolutional layers would be required.
 
