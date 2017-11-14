@@ -53,7 +53,7 @@ test_set = preprocess(test_set)
 
 FEATURES = ['Sex', 'Age', 'SibSp', 'Parch','Fare', 'Pclass_2', 'Pclass_3', 'Embarked_C', 'Embarked_S']
 
-# START USING TENSORFLOW
+# start using TENSORFLOW
 sess = tf.Session()
 tf.set_random_seed(1234)
 
@@ -68,23 +68,22 @@ def get_input_fn(data_set,data_target, num_epochs=None, shuffle=True):
 # Build a fully connected DNN
 model = tf.estimator.DNNClassifier(feature_columns=feature_cols,
                                         hidden_units=[10,10,10],
-    dropout=.2,
+    dropout=0,
     optimizer='Adagrad',
-    activation_fn = tf.sigmoid)
+    activation_fn = tf.nn.sigmoid)
 
-# Train
+# TRAIN
 model.train(input_fn=get_input_fn(train_set,train_set, num_epochs=1000, shuffle=True), steps=len(train_set))
 
 print('\n= FINISHED TRAINING =')
 
-# ACCURACY ON TRAINING SET
-
+# CHECK ACCURACY ON TRAINING SET
 y = model.predict(
       input_fn=
       get_input_fn(train_set,
                    train_set, 
                    num_epochs=1, 
-                   shuffle=False),
+                   shuffle=False)
                   )
 
 preds = list(np.argmax(p["probabilities"]) for p in itertools.islice(y, len(train_set)))
@@ -93,13 +92,17 @@ pred = np.array(preds)
 
 labels = pd.Series(train_set[LABEL].values)
 
-ascore = accuracy_score(labels,pred)
-
-print('train set accuracy',ascore)
+score_train = accuracy_score(labels,pred)
 
 
 
-############################################
+print(model.evaluate(input_fn=
+      get_input_fn(train_set,
+                   train_set, 
+                   num_epochs=1, 
+                   shuffle=False))["accuracy"])
+
+# CHECK ACCURACY ON TEST SET
 y = model.predict(
       input_fn=
       get_input_fn(test_set,
@@ -114,6 +117,7 @@ pred = np.array(preds)
 
 labels = pd.Series(test_target[LABEL].values)
 
-ascore = accuracy_score(labels,pred)
+score_test = accuracy_score(labels,pred)
 
-print('test set accuracy',ascore)
+print('train set accuracy',score_train)
+print('test set accuracy',score_test)
