@@ -1,125 +1,116 @@
-import tensorflow as tf
-import numpy as np
-import math
-import matplotlib.pyplot as plt
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.autograd import Variable
+from torch.utils.data import DataLoader
+from torch.utils.data import sampler
 
+import torchvision.datasets as dset
+import torchvision.transforms as T
+
+import numpy as np
+import copy
+import math
 import os
 file_dir= os.path.dirname(os.path.realpath(__file__))
 os.chdir(file_dir)
 
-from data_utils import load_CIFAR10
-
-def get_CIFAR10_data(num_training=49000, num_validation=1000, num_test=10000):
+class ChunkSampler(sampler.Sampler):
+    """Samples elements sequentially from some offset. 
+    Arguments:
+        num_samples: # of desired datapoints
+        start: offset where we should start selecting from
     """
-    Use the cs231n data_utils.py script to load the data
-    """
-    # Load the raw CIFAR-10 data
-    cifar10_dir = 'cifar-10-batches-py'
-    X_train, y_train, X_test, y_test = load_CIFAR10(cifar10_dir)
+    def __init__(self, num_samples, start = 0):
+        self.num_samples = num_samples
+        self.start = start
 
-    # Subsample the data
-    mask = range(num_training, num_training + num_validation)
-    X_val = X_train[mask]
-    y_val = y_train[mask]
-    mask = range(num_training)
-    X_train = X_train[mask]
-    y_train = y_train[mask]
-    mask = range(num_test)
-    X_test = X_test[mask]
-    y_test = y_test[mask]
+    def __iter__(self):
+        return iter(range(self.start, self.start + self.num_samples))
 
-    # Normalize the data: subtract the mean image
-    mean_image = np.mean(X_train, axis=0)
-    X_train -= mean_image
-    X_val -= mean_image
-    X_test -= mean_image
+    def __len__(self):
+        return self.num_samples
 
-    return X_train, y_train, X_val, y_val, X_test, y_test
+NUM_TRAIN = 49000
+NUM_VAL = 1000
 
+cifar10_train = dset.CIFAR10('./cs231n/datasets', train=True, download=True,
+                           transform=T.ToTensor())
+loader_train = DataLoader(cifar10_train, batch_size=64, sampler=ChunkSampler(NUM_TRAIN, 0))
 
-# Invoke the above function to get our data.
-X_train, y_train, X_val, y_val, X_test, y_test = get_CIFAR10_data()
-print('Train data shape: ', X_train.shape)
-print('Train labels shape: ', y_train.shape)
-print('Validation data shape: ', X_val.shape)
-print('Validation labels shape: ', y_val.shape)
-print('Test data shape: ', X_test.shape)
-print('Test labels shape: ', y_test.shape)
+cifar10_val = dset.CIFAR10('./cs231n/datasets', train=True, download=True,
+                           transform=T.ToTensor())
+loader_val = DataLoader(cifar10_val, batch_size=64, sampler=ChunkSampler(NUM_VAL, NUM_TRAIN))
 
+cifar10_test = dset.CIFAR10('./cs231n/datasets', train=False, download=True,
+                          transform=T.ToTensor())
+loader_test = DataLoader(cifar10_test, batch_size=64)
+
+# Constant to control how frequently we print train loss
+print_every = 100
+
+# This is a little utility that we'll use to reset the model
+# if we want to re-initialize all our parameters
+def reset(m):
+    if hasattr(m, 'reset_parameters'):
+        m.reset_parameters()
+        
+class Flatten(nn.Module):
+    def forward(self, x):
+        N, C, H, W = x.size() # read in N, C, H, W
+        return x.view(N, -1)  # "flatten" the C * H * W values into a single vector per image
+     
+#####################################################
+# Verify that CUDA is properly configured and you have a GPU available
+torch.cuda.is_available()
+dtype = torch.cuda.FloatTensor
+
+def train(model, loss_fn, optimizer, num_epochs = 1):
+    for epoch in range(num_epochs):
+        print('Starting epoch %d / %d' % (epoch + 1, num_epochs))
+        model.train()
+        for t, (x, y) in enumerate(loader_train):
+            x_var = Variable(x.type(dtype))
+            y_var = Variable(y.type(dtype).long())
+
+            scores = model(x_var)
+            
+            loss = loss_fn(scores, y_var)
+            if (t + 1) % print_every == 0:
+                print('t = %d, loss = %.4f' % (t + 1, loss.data[0]))
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+def check_accuracy(model, loader):
+    if loader.dataset.train:
+        print('Checking accuracy on validation set')
+    else:
+        print('Checking accuracy on test set')   
+    num_correct = 0
+    num_samples = 0
+    model.eval() # Put the model in test mode (the opposite of model.train(), essentially)
+    for x, y in loader:
+        x_var = Variable(x.type(dtype), volatile=True)
+
+        scores = model(x_var)
+        _, preds = scores.data.cpu().max(1)
+        num_correct += (preds == y).sum()
+        num_samples += preds.size(0)
+    acc = float(num_correct) / num_samples
+    print('Got %d / %d correct (%.2f)' % (num_correct, num_samples, 100 * acc))
 
 #####################################################
-def run_model(session, predict, loss_val, Xd, yd,
-              epochs=1, batch_size=64, print_every=100,
-              training=None, plot_losses=False):
-    # have tensorflow compute accuracy
-    correct_prediction = tf.equal(tf.argmax(predict,1), y)
-    accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-    
-    # shuffle indicies
-    train_indicies = np.arange(Xd.shape[0])
-    np.random.shuffle(train_indicies)
-
-    training_now = training is not None
-    
-    # setting up variables we want to compute (and optimizing)
-    # if we have a training function, add that to things we compute
-    variables = [mean_loss,correct_prediction,accuracy]
-    if training_now:
-        variables[-1] = training
-    
-    # counter 
-    iter_cnt = 0
-    for e in range(epochs):
-        # keep track of losses and accuracy
-        correct = 0
-        losses = []
-        # make sure we iterate over the dataset once
-        for i in range(int(math.ceil(Xd.shape[0]/batch_size))):
-            # generate indicies for the batch
-            start_idx = (i*batch_size)%Xd.shape[0]
-            idx = train_indicies[start_idx:start_idx+batch_size]
-            
-            # create a feed dictionary for this batch
-            feed_dict = {X: Xd[idx,:],
-                         y: yd[idx],
-                         is_training: training_now }
-            # get batch size
-            actual_batch_size = yd[idx].shape[0]
-            
-            # have tensorflow compute loss and correct predictions
-            # and (if given) perform a training step
-            loss, corr, _ = session.run(variables,feed_dict=feed_dict)
-            
-            # aggregate performance stats
-            losses.append(loss*actual_batch_size)
-            correct += np.sum(corr)
-            
-            # print every now and then
-            if training_now and (iter_cnt % print_every) == 0:
-                print("Iteration {0}: with minibatch training loss = {1:.3g} and accuracy of {2:.2g}"\
-                      .format(iter_cnt,loss,np.sum(corr)/actual_batch_size))
-            iter_cnt += 1
-        total_correct = correct/Xd.shape[0]
-        total_loss = np.sum(losses)/Xd.shape[0]
-        print("Epoch {2}, Overall loss = {0:.3g} and accuracy of {1:.3g}"\
-              .format(total_loss,total_correct,e+1))
-        if plot_losses:
-            plt.plot(losses)
-            plt.grid(True)
-            plt.title('Epoch {} Loss'.format(e+1))
-            plt.xlabel('minibatch number')
-            plt.ylabel('minibatch loss')
-            plt.show()
-    return total_loss,total_correct
-#####################################################
-
+######## MY MODEL ##################################    
 hw0 = 32 # height = width of the input 
+nC = 3  # number of channels of the input
 
-# assuming we use the same parameters for each convolutional layer
+# assuming we're using the same parameters for each convolutional layer
 ck = 3 # window size - "k" like "kernel"
 p = 1 # padding 
 f = 32 # number of filters
-cs = 1 # stride (default TF = 1)
+cs = 1 # stride (default PyTorch = 1)
 
 # pooling
 pk = 2
@@ -134,59 +125,37 @@ nConv = 3 # number of [conv-relu-batchnorm-MaxPool] layer groups
 hwe = int(hwc1/pk**nConv)
 
 
+my_model_base = nn.Sequential(
+                    nn.Conv2d(nC, f, ck,padding=p),
+                    nn.ReLU(inplace=True),
+                    nn.BatchNorm2d(f),
+                    nn.MaxPool2d(pk)
+            )
 
-def my_model(X,y,is_training):
-    layer_input = X
-    
-    for i in range(nConv):
-        conv = tf.layers.conv2d(
-        layer_input,
-        f,
-        ck,    
-        padding="same",
-        activation=tf.nn.relu)
-        h = tf.layers.batch_normalization(conv,training = is_training)
-        p = tf.layers.max_pooling2d(h,pk,pk) 
-        # pooling kernel same both directions; stride same as kernel
-        layer_input = p
-  
-   
-    
-    lastconv_flat= tf.reshape(layer_input, [-1, hwe * hwe * f])
+for i in range(nConv-1):
+    my_model_base = nn.Sequential(my_model_base,
+                        nn.Conv2d(f, f, ck,padding=p),
+                        nn.ReLU(inplace=True),
+                        nn.BatchNorm2d(f),
+                        nn.MaxPool2d(pk),
+                )
 
-    d1 = tf.layers.dense(inputs=lastconv_flat, units=1024, activation=tf.nn.relu)
+my_model_base = nn.Sequential(my_model_base,
+                    Flatten(),    
+                    nn.Linear(hwe*hwe*f, 1024),
+                    nn.ReLU(inplace=True),
+                    nn.Dropout2d(p=0.4),
+                    nn.Linear(1024,10)    
+            )
 
-    # Add dropout operation; 0.6 probability that element will be kept
-    do1 = tf.layers.dropout(
-      inputs=d1, rate=0.4, training=is_training)
+#######################################################
 
-    y_out = tf.layers.dense(inputs=do1, units=10)
+torch.cuda.synchronize() # Make sure there are no pending GPU computations
+model = copy.deepcopy(my_model_base).type(dtype)
+loss_fn = nn.CrossEntropyLoss().type(dtype)
+optimizer = optim.RMSprop(model.parameters(), lr=1e-3) 
 
-    return y_out
+train(model, loss_fn, optimizer, num_epochs=10)
+check_accuracy(model, loader_val)
 
-tf.reset_default_graph()
-
-X = tf.placeholder(tf.float32, [None, 32, 32, 3])
-y = tf.placeholder(tf.int64, [None])
-is_training = tf.placeholder(tf.bool)
-
-y_out = my_model(X,y,is_training)
-mean_loss = tf.losses.softmax_cross_entropy(tf.one_hot(y,10),y_out)
-optimizer = tf.train.RMSPropOptimizer(1e-3)
-
-# batch normalization in tensorflow requires this extra dependency
-extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
-with tf.control_dependencies(extra_update_ops):
-    train_step = optimizer.minimize(mean_loss)
-    
-sess = tf.Session()
-
-sess.run(tf.global_variables_initializer())
-print('Training')
-run_model(sess,y_out,mean_loss,X_train,y_train,10,64,100,train_step,True)
-print('Validation')
-run_model(sess,y_out,mean_loss,X_val,y_val,1,64)    
-
-print('Test')
-run_model(sess,y_out,mean_loss,X_test,y_test,1,64)
-
+check_accuracy(model, loader_test)
