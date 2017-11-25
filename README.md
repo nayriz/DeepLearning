@@ -1,2 +1,3 @@
 # DeepLearning
-examples of deep learning applications using various frameworks
+examples of deep learning applications using various frameworks.
+
