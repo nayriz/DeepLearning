@@ -11,3 +11,12 @@ Original link: http://ai.stanford.edu/~amaas/data/sentiment/
 - keras
 - gensim
 - nltk
+
+# Test Accuracy Results
+
+Latent Sentiment Analysis (LSA): 0.855
+
+RNN : 0.835
+
+CNN : 
+
