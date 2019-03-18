@@ -1,12 +1,12 @@
 Python 3.6+
 
-# Necessary Dataset:
+# Necessary Dataset
 
 [Large Movie Review Dataset](http://ai.stanford.edu/~amaas/data/sentiment/) 
 
 Original link: http://ai.stanford.edu/~amaas/data/sentiment/
 
-# Necessary packages:
+# Necessary packages
 
 - keras
 - gensim
@@ -14,9 +14,9 @@ Original link: http://ai.stanford.edu/~amaas/data/sentiment/
 
 # Test Accuracy Results
 
-Latent Sentiment Analysis (LSA): 0.855
+LSA: 0.8551
 
-RNN : 0.835
+RNN: 0.8713
 
-CNN : 
+CNN: 0.8792
 
